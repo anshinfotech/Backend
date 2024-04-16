@@ -1,5 +1,6 @@
 const userModel = require("../Models/userModel");
 const nodemailer = require("nodemailer");
+const bcrypt = require("bcrypt");
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -15,12 +16,15 @@ const otp = Math.round(Math.random() * 100000);
 
 const submitdata = async (req, res) => {
   const { username, phone, email, password } = req.body;
+
+  const securepassword = await bcrypt.hash(password, 10);
+
   try {
     const data = await userModel.create({
       username,
       phone,
       email,
-      password,
+      password: securepassword,
       otp,
     });
     const info = await transporter.sendMail({
@@ -43,16 +47,42 @@ const verifyUser = async (req, res) => {
   const { otp } = req.body;
   try {
     const user = await userModel.findOne({ _id });
-    console.log(user.verified);
-    if (user.otp === otp) {
+    if (user.otp == otp) {
       user.verified = true;
       user.otp = null;
+      await user.save();
       res.status(200).send({ message: "User is verified", user });
     } else {
       res.status(404).send({ message: "User not found or OTP doesnot match" });
     }
   } catch (error) {
     res.status(404).send({ message: "Error verifieng user", error });
+  }
+};
+const loginUser = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    let user = await userModel.findOne({ email });
+    if (!user) {
+      res
+        .status(404)
+        .send({ message: "Email is wrong or User Does not exist" });
+      return;
+    }
+    if (user.verified === true) {
+      const securepassword = await bcrypt.compare(password, user.password);
+      console.log(securepassword);
+      if (securepassword) {
+        res.status(200).send({ message: "Login Successfull" });
+      } else {
+        res.status(404).send({ message: "Password is wrong" });
+      }
+    } else {
+      res.status(404).send({ message: "User is not verified" });
+    }
+  } catch (error) {
+    res.status(404).send({ message: "Error logging user", error });
   }
 };
 
@@ -128,4 +158,12 @@ const updateUser = async (req, res) => {
       .send({ message: "Error updating user", error: error.message });
   }
 };
-module.exports = { submitdata, allusers, singleuser, deleteUser, updateUser ,verifyUser};
+module.exports = {
+  submitdata,
+  allusers,
+  singleuser,
+  deleteUser,
+  updateUser,
+  verifyUser,
+  loginUser,
+};
